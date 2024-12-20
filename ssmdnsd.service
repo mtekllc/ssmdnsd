@@ -1,0 +1,9 @@
+[Unit]
+Description=Super Simple Multicast DNS server
+
+[Service]
+Type=simple
+ExecStart=ssmdnsd -4
+
+[Install]
+WantedBy=multi-user.target

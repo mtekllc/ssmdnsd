@@ -1,0 +1,24 @@
+.TH @PACKAGE@ 1 "December 2024" "version @VERSION@" "User Manuals"
+.SH "NAME"
+@PACKAGE@ \- Super Simple Multicast DNS server
+.SH "SYNOPSIS"
+.B @PACKAGE@ [-h host_alias_override] [-4]
+.SH "DESCRIPTION"
+.B @PACKAGE@ is a Super Simple Multicast DNS server, able to reply to other computers on the network at (your hostname).local
+.SH "OPTIONS"
+Usually this is intended to be used without any -h flag.
+.IP -h
+Specify a hostname override instead of using /etc/hostname - you can launch multiple instances, to get multiple overrides.
+.IP -4
+Disable IPv6 operation.
+.SH "AUTHOR"
+mtekllc <@PACKAGE_BUGREPORT@>
+
+.SH COPYRIGHT
+Copyright \(co 2024 Charles Lohr
+.br
+Copyright \(co 2025 Michael Miller
+.br
+.SH LICENSE
+@PACKAGE@ is licensed under the MIT-x11 license.
+
