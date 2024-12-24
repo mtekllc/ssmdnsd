@@ -7,15 +7,6 @@ AC_INIT(m4_defn([name]),m4_defn([version]),m4_defn([bugs]))
 AC_CONFIG_HEADERS([src/config.h])
 AC_DEFINE([_GNU_SOURCE], [1], [gnu extensions])
 
-AC_ARG_ENABLE([enable-ipv4-only],
-    AS_HELP_STRING([--enable-ipv4-only], [disable ipv6 support]))
-AS_IF([test "x$enable_ipv4_only" = "xyes"], [
-    AC_DEFINE([DISABLE_IPV6], [1], [ipv6 support disabled])
-], [
-    AC_DEFINE([DISABLE_IPV6], [0], [ipv6 support enabled])
-]
-)
-
 AC_CONFIG_AUX_DIR([build-aux])
 AC_CONFIG_MACRO_DIR([m4])
 
@@ -24,16 +15,21 @@ AM_INIT_AUTOMAKE([foreign subdir-objects -Wno-error -Wno-portability])
 AC_CONFIG_FILES([Makefile ssmdnsd.1])
 
 # Checks for programs.
+AC_PROG_CXX
 AC_PROG_CC
+AC_PROG_INSTALL
 
 # Checks for libraries.
 
 # Checks for header files.
-AC_CHECK_HEADERS([stdlib.h string.h])
+AC_CHECK_HEADERS([arpa/inet.h fcntl.h fenv.h inttypes.h netinet/in.h stdint.h sys/socket.h unistd.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
+AC_TYPE_UINT16_T
+AC_TYPE_UINT32_T
+AC_TYPE_UINT8_T
 
 # Checks for library functions.
-AC_FUNC_MALLOC
-
+AC_FUNC_FORK
+AC_CHECK_FUNCS([inet_ntoa memset socket strerror])
 AC_OUTPUT
