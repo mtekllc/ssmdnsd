@@ -89,6 +89,48 @@
 #define DNS_TYPE_PTR            12      /**< a PTR (pointer) record */
 #define DNS_TYPE_HINFO          13      /**< Host info */
 
+/**
+ * @brief a union for DNS flags
+ */
+typedef union __attribute__((packed, aligned(1))){
+        struct {
+                uint16_t rcode : 4; /**< response code (4 bits) */
+                uint16_t cd : 1; /**< non auth data (1 bit) */
+                uint16_t ad : 1; /**< answer authenticated (1 bit) */
+                uint16_t z : 1; /**< Z reserved (1 bit) */
+                uint16_t ra : 1; /**< recursion available (1 bit) */
+                uint16_t rd : 1; /**< recursion desired (1 bit) */
+                uint16_t tc : 1; /**< truncated message (1 bit) */
+                uint16_t aa : 1; /**< authoritative answer (1 bit) */
+                uint16_t opcode : 4; /**< operation code (4 bits) */
+                uint16_t qr : 1; /**< query/response (1 bit) */
+        }
+        bits; /**< bit-field representation for individual access */
+        uint16_t v; /**< full 16-bit representation of the DNS flags*/
+} flags_t;
+
+/**
+ * @brief the mDNS query type
+ */
+typedef struct __attribute__ ((packed,aligned(1))) {
+        uint16_t transaction_id; /**< unique transaction ID for the query */
+        flags_t flags; /**< flags (e.g., query/response, authoritative) */
+        uint16_t question_count; /**< number of questions */
+        uint16_t answer_count; /**< number of answers (if any, typically 0 for queries)*/
+        uint16_t authority_count; /**< number of authority records*/
+        uint16_t additional_count; /**< number of additional records */
+} mdns_header_t;
+
+typedef struct _qu_t {
+        mdns_header_t *hdr; /**< pointer to the original header */
+        uint16_t record_type; /**< record type yanked from the question */
+        uint16_t record_class; /**< class type yanked from the question */
+        int ip_proto;/**< ipv4/6 protocol selector yanked from the recv */
+        char name[256];/**< the stringified name assembled from labels of the question */
+        uint8_t *name_ptr;/**< pointer to the base of dns labels of the question */
+        int name_ptr_len;/**< total number of bytes of comprising all labels */
+}qu_t; /**< question response complex argument */
+
 static const char *hostname_override;
 static char hostname[HOST_NAME_MAX + 1] = {0};
 static int hostnamelen = 0;
@@ -340,7 +382,7 @@ static void multicast_addr_check(struct sockaddr * addr)
         if (family == AF_INET) {
                 char addrbuff[INET_ADDRSTRLEN + 1] = {0};
                 struct sockaddr_in *sa4 = (struct sockaddr_in*)addr;
-                const char * addrout = inet_ntop(family, &sa4->sin_addr, addrbuff, sizeof( addrbuff) - 1);
+                const char * addrout = inet_ntop(family, &sa4->sin_addr, addrbuff, sizeof(addrbuff) - 1);
                 if (!(is_ipv4_local(&sa4->sin_addr))) {
                         return;
                 }
@@ -349,7 +391,7 @@ static void multicast_addr_check(struct sockaddr * addr)
         } else if (family == AF_INET6 && !is_ipv4_only) {
                 char addrbuff[INET6_ADDRSTRLEN + 1] = {0};
                 struct sockaddr_in6 *sa6 = (struct sockaddr_in6 *)addr;
-                const char * addrout = inet_ntop(family, &sa6->sin6_addr, addrbuff, sizeof( addrbuff) - 1);
+                const char * addrout = inet_ntop(family, &sa6->sin6_addr, addrbuff, sizeof(addrbuff) - 1);
                 if (!(is_ipv6_local(&sa6->sin6_addr))){
                         return;
                 }
@@ -360,7 +402,7 @@ static void multicast_addr_check(struct sockaddr * addr)
 }
 
 /**
- * @brief it loops through our interface list and passess to the multicast add
+ * @brief it loops through our interface list and passes ifs to the multicast add
  *        method for inclusion
  */
 static int request_interfaces()
@@ -432,7 +474,7 @@ static void handle_netlink_recv()
 }
 
 /**
- * @brief extract and concantinate labels of a question with a '.' and then
+ * @brief extract and concatenate labels of a question with a '.' and then
  *        terminate with '.local'
  *
  * @param baseptr pointer to the start of the name or array of labels
@@ -462,7 +504,7 @@ uint8_t * mdns_path_parse(uint8_t *baseptr, uint8_t *eptr, char *name_str, int *
                         return NULL;
                 }
 
-                // if not our label, append a '.'
+                // if not the first label, append a '.'
                 if (*len != 0) {
                         *(name_str++) = '.';
                         (*len)++;
@@ -488,45 +530,11 @@ uint8_t * mdns_path_parse(uint8_t *baseptr, uint8_t *eptr, char *name_str, int *
         return baseptr;
 }
 
-// Define the mDNS query type
-
-// Define a union for DNS flags
-typedef union __attribute__ ((packed,aligned(1))) {
-    struct __attribute__ ((packed,aligned(1))) {
-        uint16_t rcode : 4;    // Response code (4 bits)
-        uint16_t cd : 1;        // Zero (1 bit, reserved for future use)
-        uint16_t ad : 1;        // Zero (1 bit, reserved for future use)
-        uint16_t z : 1;        // Zero (1 bit, reserved for future use)
-        uint16_t ra : 1;       // Recursion Available (1 bit)
-        uint16_t rd : 1;       // Recursion Desired (1 bit)
-        uint16_t tc : 1;       // Truncated Message (1 bit)
-        uint16_t aa : 1;       // Authoritative Answer (1 bit)
-        uint16_t opcode : 4;   // Operation code (4 bits)
-        uint16_t qr : 1;       // Query/Response (1 bit)
-    } bits; // Bit-field representation for individual access
-    uint16_t v; // Full 16-bit representation of the DNS flags
-} __attribute__ ((packed,aligned(1))) flags_t;
-
-typedef struct __attribute__ ((packed,aligned(1))) {
-        uint16_t transaction_id; // Unique transaction ID for the query
-        flags_t flags; // Flags (e.g., query/response, authoritative)
-        uint16_t question_count; // Number of questions
-        uint16_t answer_count; // Number of answers (if any, typically 0 for queries)
-        uint16_t authority_count; // Number of authority records
-        uint16_t additional_count; // Number of additional records
-} mdns_header_t;
-
-typedef struct _qu_t {
-        mdns_header_t *hdr;
-        uint16_t transaction_id;
-        uint16_t record_type;
-        uint16_t record_class;
-        int ip_proto;
-        char name[256];
-        int name_ptr_len;
-        uint8_t *name_ptr;
-}qu_t;
-
+/**
+ * @brief take attributes of the mDNS header to network byte order
+ *
+ * @param hdr
+ */
 static void mdns_swap_to_net(mdns_header_t *hdr)
 {
         hdr->transaction_id = htons(hdr->transaction_id);
@@ -537,6 +545,10 @@ static void mdns_swap_to_net(mdns_header_t *hdr)
         hdr->additional_count = htons(hdr->additional_count);
 }
 
+/**
+ * @brief take attributes of the mDNS header to host byte order
+ * @param hdr
+ */
 static void mdns_swap_to_host(mdns_header_t *hdr)
 {
         hdr->transaction_id = ntohs(hdr->transaction_id);
@@ -552,17 +564,13 @@ static void mdns_swap_to_host(mdns_header_t *hdr)
  *
  * @param sock
  * @param sender
- * @param sl
- * @param record_type
- * @param addr_type
- * @param xactionid
- * @param namestartptr
- * @param stlen
+ * @param sender_len
+ * @param qu
  * @param in_any
  */
 static void respond(int sock, struct sockaddr_in6 *sender, int sender_len, qu_t *qu, void *in_any)
 {
-        uint8_t outbuff[2048] = {0}; /**< large enought to hold a single datagram */
+        uint8_t outbuff[2048] = {0}; /**< large enough to hold a single datagram */
         uint8_t *obptr = outbuff;
         mdns_header_t *rsp = (mdns_header_t*)outbuff;
         struct in_addr *local_addr_4 = in_any;
@@ -576,7 +584,7 @@ static void respond(int sock, struct sockaddr_in6 *sender, int sender_len, qu_t 
         }
 
         // for ipv4/6 responses we always have this in common
-        rsp->transaction_id = qu->transaction_id;
+        rsp->transaction_id = qu->hdr->transaction_id;
 
         // setup the flags field as required
         rsp->flags.bits.qr = 1;
@@ -620,7 +628,7 @@ static void respond(int sock, struct sockaddr_in6 *sender, int sender_len, qu_t 
         /* 6762 5.4 Multicast DNS defines the top bit in the class field of a
          * DNS question as the unicast-response bit */
 
-        // query is requesting a unicast reponse
+        // query is requesting a unicast response
         if (qu->record_class & 0x8000) {
                 if (sendto(sock, outbuff, obptr - outbuff, MSG_NOSIGNAL,
                         (struct sockaddr*)sender, sender_len) != obptr - outbuff) {
