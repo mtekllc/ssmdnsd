@@ -149,6 +149,12 @@ struct sockaddr_in sin_multicast = {
         .sin_port = 0
 };
 
+/**
+ * @brief a verbosity flag controlled path to stdout
+ *
+ * @param fmt
+ * @param ...
+ */
 void applogf(const char *fmt, ...)
 {
         int rs = 0;
@@ -547,6 +553,7 @@ static void mdns_swap_to_net(mdns_header_t *hdr)
 
 /**
  * @brief take attributes of the mDNS header to host byte order
+ *
  * @param hdr
  */
 static void mdns_swap_to_host(mdns_header_t *hdr)
@@ -858,25 +865,25 @@ static void handle_message_recv(int sock, int is_resolver)
                                  * to make sure to exit */
                                 int socks_to_send = socket(AF_INET, SOCK_DGRAM, 0);
                                 if (!socks_to_send) {
-                                        fprintf(stderr, "warning: could not create multicast message\n");
+                                        fprintf(stderr, "error: could not create multicast message\n");
                                         exit(1);
                                 }
 
                                 int loopbackEnable = 0;
                                 if (setsockopt(socks_to_send, IPPROTO_IP, IP_MULTICAST_LOOP, &loopbackEnable, sizeof(loopbackEnable)) < 0) {
-                                        fprintf(stderr, "warning: cannot prevent self-looping of mdns packets\n");
+                                        fprintf(stderr, "error: cannot prevent self-looping of mDNS packets\n");
                                         exit(1);
                                 }
 
                                 struct timeval tv = {.tv_sec = 3};
                                 if (setsockopt(socks_to_send, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv)) < 0) {
-                                        fprintf(stderr, "warning: could not set sock option on repeated socket\n");
+                                        fprintf(stderr, "error: could not set sock option on repeated socket\n");
                                         close(socks_to_send);
                                         exit(1);
                                 }
 
                                 if (sendto(socks_to_send, buffer, r, MSG_NOSIGNAL, (struct sockaddr*)&sin_multicast, sizeof(sin_multicast)) < 0) {
-                                        fprintf(stderr, "warning: could not repeat as MDNS request\n");
+                                        fprintf(stderr, "error: could not repeat as mDNS request\n");
                                         close(socks_to_send);
                                         exit(1);
                                 }
@@ -886,7 +893,6 @@ static void handle_message_recv(int sock, int is_resolver)
                                         if (r <= 0) {
                                                 break;
                                         }
-
                                         // If the packet is a reply, not a question, we can forward it back to the asker.
                                         uint16_t flags = ntohs(((uint16_t*)buffer)[1]);
                                         if ((flags & 0x8000)) {
@@ -969,8 +975,7 @@ int main(int argc, char *argv[])
 
                 struct sockaddr_in sin_resolve = {
                         .sin_family = AF_INET,
-                        .sin_addr =
-                        { inet_addr(RESOLVER_IP)},
+                        .sin_addr = { inet_addr(RESOLVER_IP)},
                         .sin_port = htons(RESOLVER_PORT)
                 };
 
