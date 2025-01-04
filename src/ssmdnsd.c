@@ -132,7 +132,7 @@ typedef struct _qu_t {
 }qu_t; /**< question response complex argument */
 
 static const char *hostname_override = NULL; /**< override /etc/hostname with this name string */
-static const char *only_interface = NULL; /**< only list on this interface name */
+static const char *only_interface = NULL; /**< only listen on this interface name */
 static char hostname[HOST_NAME_MAX + 1] = {0};
 static int hostnamelen = 0;
 static int hostname_watch = 0;
@@ -416,7 +416,7 @@ static void multicast_addr_check(struct sockaddr *addr)
  */
 static int request_interfaces()
 {
-        unsigned set = 1;
+        unsigned set = 0;
         struct ifaddrs * ifaddr = 0;
 
         if (getifaddrs(&ifaddr) < 0) {
@@ -426,6 +426,7 @@ static int request_interfaces()
 
         for (struct ifaddrs *ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
                 // user request specific interface only check
+
                 if (only_interface
                         && memcmp(only_interface, ifa->ifa_name, strlen(ifa->ifa_name)+1)) {
                         continue; // not a match for only_interface
@@ -438,7 +439,11 @@ static int request_interfaces()
         freeifaddrs(ifaddr);
 
         if (!set) {
-                fprintf(stderr, "error: no interface found\n");
+                if (only_interface) {
+                        fprintf(stderr, "error: no interface found matching [%s]\n", only_interface);
+                } else {
+                        fprintf(stderr, "error: no interface found\n");
+                }
                 return -2;
         }
 
