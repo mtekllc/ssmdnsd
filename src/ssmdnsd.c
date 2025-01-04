@@ -131,7 +131,8 @@ typedef struct _qu_t {
         int name_ptr_len;/**< total number of bytes of comprising all labels */
 }qu_t; /**< question response complex argument */
 
-static const char *hostname_override;
+static const char *hostname_override = NULL; /**< override /etc/hostname with this name string */
+static const char *only_interface = NULL; /**< only list on this interface name */
 static char hostname[HOST_NAME_MAX + 1] = {0};
 static int hostnamelen = 0;
 static int hostname_watch = 0;
@@ -377,7 +378,7 @@ static int is_ipv6_local(struct in6_addr * addr)
  *
  * @return
  */
-static void multicast_addr_check(struct sockaddr * addr)
+static void multicast_addr_check(struct sockaddr *addr)
 {
         if (!addr) {
                 return;
@@ -410,9 +411,12 @@ static void multicast_addr_check(struct sockaddr * addr)
 /**
  * @brief it loops through our interface list and passes ifs to the multicast add
  *        method for inclusion
+ *
+ * @return zero on success otherwise less than indicates an error
  */
 static int request_interfaces()
 {
+        unsigned set = 1;
         struct ifaddrs * ifaddr = 0;
 
         if (getifaddrs(&ifaddr) < 0) {
@@ -421,11 +425,22 @@ static int request_interfaces()
         }
 
         for (struct ifaddrs *ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+                // user request specific interface only check
+                if (only_interface
+                        && memcmp(only_interface, ifa->ifa_name, strlen(ifa->ifa_name)+1)) {
+                        continue; // not a match for only_interface
+                }
                 struct sockaddr * addr = ifa->ifa_addr;
                 multicast_addr_check(addr);
+                set++;
         }
 
         freeifaddrs(ifaddr);
+
+        if (!set) {
+                fprintf(stderr, "error: no interface found\n");
+                return -2;
+        }
 
         return 0;
 }
@@ -920,10 +935,13 @@ int main(int argc, char *argv[])
 {
         int inotifyfd = 0;
         int c = 0;
-        while ((c = getopt(argc, argv, "r4h:")) != -1) {
+        while ((c = getopt(argc, argv, "hr4n:i:")) != -1) {
                 switch (c) {
-                case 'h':
+                case 'n':
                         hostname_override = optarg;
+                        break;
+                case 'i':
+                        only_interface = optarg;
                         break;
                 case 'r':
                         resolver = socket(AF_INET, SOCK_DGRAM, 0);
@@ -936,8 +954,8 @@ int main(int argc, char *argv[])
                         applogf("verbosity: %d\n", g_verbose);
                         break;;
                 default:
-                case '?':
-                        fprintf(stderr, "error: usage: " PACKAGE_NAME " [-r] [-h hostname override]\n");
+                case 'h':
+                        fprintf(stderr, "error: usage: " PACKAGE_NAME " [-r] [-n hostname override] [-i <only_interface>]\n");
                         exit(1);
                 }
         }
@@ -1075,6 +1093,9 @@ int main(int argc, char *argv[])
         do {
                 int failcount = 0;
                 r = request_interfaces();
+                if (r == -2) {
+                        exit(1); // fatal no interface found matching user supplied filter
+                }
                 if (r != 0) {
                         if (failcount++ > 10) {
                                 fprintf(stderr, "error: too many failures getting interfaces\n");
