@@ -14,7 +14,7 @@ bin/$(PACKAGE): $(SOURCES)
 
 check:
 	bin/$(PACKAGE) 2>&1 &
-	bin/$(PACKAGE) -h override 2>&1 &
+	bin/$(PACKAGE) -n override 2>&1 &
 	ping -c 1 $(shell cat /etc/hostname).local # Ok, doesn't actually test anything
 	##ping -c 1 override.local # test the override feature
 	killall $(PACKAGE)
