@@ -89,6 +89,8 @@
 #define DNS_TYPE_PTR            12      /**< a PTR (pointer) record */
 #define DNS_TYPE_HINFO          13      /**< Host info */
 
+#define PID_FILE_PATH           "/var/run/" PACKAGE ".pid"
+
 /**
  * @brief a union for DNS flags
  */
@@ -142,6 +144,8 @@ static int is_bound_6 = 0;
 static int sdifaceupdown = 0;
 static int resolver = 0;
 static int g_verbose = 0;
+static char *pid_file_path = NULL; /**< path to file holding program PID */
+static int g_background = 1; /**< by default we will run in the background */
 
 // for multicast queries, and multicast replies.
 struct sockaddr_in sin_multicast = {
@@ -176,6 +180,115 @@ void applogf(const char *fmt, ...)
 
         free(buf);
 }
+
+/**
+ * @brief read a PID from a file and if the PID is found to be valid and running
+ *
+ * @return return 0 if the PID of interest is running/valid or non zero otherwise
+ */
+static int check_duplicate_run(const char *pidfile)
+{
+        FILE *pid_file = NULL;
+        int rs = 0;
+
+        if (!pidfile || !strlen(pidfile)) {
+                return 1;
+        }
+
+        if ((pid_file = fopen(pidfile, "r"))) {
+                int pid;
+                if (fscanf(pid_file, "%d", &pid) == 1) {
+                        if ((rs = kill(pid, 0)) >= 0) {
+                                return 0;
+                        }
+                }
+                fclose(pid_file);
+        }
+        return 1;
+}
+
+/**
+ * @brief write our PID into the file path specified provided that the file was
+ *        not NULL, if the write was unsucessful, bring things to a halt
+ *
+ * @param pidfile
+ */
+static void write_pid_file(const char *pidfile)
+{
+        pid_t pid = getpid();
+        FILE *pid_file = NULL;
+
+        if (!pidfile || !strlen(pidfile)) {
+                return; // unwanted
+        }
+
+        if ((pid_file = fopen(pidfile, "w"))) {
+                fprintf(pid_file, "%d\n", pid);
+                fclose(pid_file);
+                applogf("%s write pid: %d to file %s\n", PACKAGE, pid, pidfile);
+        } else {
+                fprintf(stderr, "%s error: failed to write PID file [%s]\n",
+                        PACKAGE, pidfile);
+                exit(1);
+        }
+}
+
+/**
+ * @brief fork or daemonize the running program, closing stdout and stderr, and
+ *        placing the working directory as /
+ */
+static void daemonize()
+{
+        pid_t pid = 0;
+
+        /* Fork off the parent process */
+        pid = fork();
+
+        /* An error occurred */
+        if (pid < 0) {
+                exit(EXIT_FAILURE);
+        }
+
+        /* Success: Let the parent terminate */
+        if (pid > 0) {
+                exit(EXIT_SUCCESS);
+        }
+
+        /* On success: The child process becomes session leader */
+        if (setsid() < 0) {
+                exit(EXIT_FAILURE);
+        }
+
+        /* Fork off for the second time*/
+        pid = fork();
+
+        /* An error occurred */
+        if (pid < 0) {
+                exit(EXIT_FAILURE);
+        }
+
+        /* Success: Let the parent terminate */
+        if (pid > 0) {
+                exit(EXIT_SUCCESS);
+        }
+
+        /* Set new file permissions */
+        umask(0);
+
+        /* Change the working directory to the root directory */
+        /* or another appropriated directory */
+        if (chdir("/") < 0) {
+                fprintf(stderr, "error: chdir(/)\n");
+                exit(EXIT_FAILURE);
+        }
+
+        /* Close all open file descriptors */
+        int x = 0;
+        for (x = sysconf(_SC_OPEN_MAX); x >= 0; x--) {
+                close(x);
+        }
+}
+
 /**
  * @brief validate a Linux hostname by RFC 1123
  *
@@ -252,7 +365,7 @@ static int initialize_hostname()
                 goto validate;
         }
 
-        if ((fd = open("/etc/hostname", O_RDONLY)) < 1) {
+        if ((fd = open("/etc/hostname", O_RDONLY)) < 0) {
                 goto hostnamefault;
         }
 
@@ -280,7 +393,8 @@ static int initialize_hostname()
 validate:
 
         if (!is_valid_hostname(hostname)) {
-                fprintf(stderr,"error:  hostname %s is not RFC 1123 compliant\n", hostname);
+                fprintf(stderr,"error:  hostname %s is not RFC 1123 compliant\n",
+                        hostname);
                 return 0;
         }
 
@@ -290,7 +404,7 @@ validate:
 
 hostnamefault:
 
-        fprintf(stderr, "error: can't stat /etc/hostname\n");
+        fprintf(stderr, "error: can't stat [/etc/hostname] err %d\n", fd);
 
         return 0;
 }
@@ -940,7 +1054,7 @@ int main(int argc, char *argv[])
 {
         int inotifyfd = 0;
         int c = 0;
-        while ((c = getopt(argc, argv, "hr4n:i:")) != -1) {
+        while ((c = getopt(argc, argv, "vfhr4n:i:p:")) != -1) {
                 switch (c) {
                 case 'n':
                         hostname_override = optarg;
@@ -957,13 +1071,39 @@ int main(int argc, char *argv[])
                 case 'v':
                         g_verbose++;
                         applogf("verbosity: %d\n", g_verbose);
-                        break;;
+                        break;
+                case 'p':
+                        if (optarg) {
+                                pid_file_path = optarg;
+                        }
+                        applogf("pid_file_path: %s\n", pid_file_path);
+                        break;
+                case 'f':
+                        g_background ^= g_background;
+                        break;
                 default:
                 case 'h':
                         fprintf(stderr, "error: usage: " PACKAGE_NAME " [-r] [-n hostname override] [-i <only_interface>]\n");
                         exit(1);
                 }
         }
+
+        /* First, if the user has specified a PID file, check the PID stored in
+         * the file and verify that the process is not currently running */
+        if (pid_file_path && !check_duplicate_run(pid_file_path)) {
+                fprintf(stderr, "error: program instance already running via [%s]\n",
+                        pid_file_path);
+                exit(1);
+        }
+
+        /* By default, the program runs in the background. However, the `-f` flag
+         * overrides this behavior, keeping the program in the foreground by
+         * skipping the fork */
+        if (g_background) {
+                daemonize();
+        }
+
+        write_pid_file(pid_file_path);
 
         sin_multicast.sin_port = htons(MDNS_PORT);
 

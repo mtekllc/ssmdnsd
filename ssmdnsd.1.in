@@ -2,17 +2,23 @@
 .SH "NAME"
 @PACKAGE@ \- Super Simple Multicast DNS server
 .SH "SYNOPSIS"
-.B @PACKAGE@ [-n host_alias_override] [-4] [-i <only interface>]
+.B @PACKAGE@ [-n host_alias_override] [-4] [-i <only interface>] [-p <pid file>] [-v] [-f]
 .SH "DESCRIPTION"
 .B @PACKAGE@ is a Super Simple Multicast DNS server, able to reply to other computers on the network at (your hostname).local
 .SH "OPTIONS"
-Usually this is intended to be used without any -h flag.
+Usually this is intended to be used without any -n flag.
 .IP -n
 Specify a hostname override instead of using /etc/hostname - you can launch multiple instances, to get multiple overrides.
 .IP -i
 Specify a an interface name for which to listen on rather than all interfaces (default).
+.IP -f
+Run the @PACKAGE@ in the foreground
+.IP -p
+Specify a file system path to store the program's PID. If set, subsequent executions using the same path will verify that an instance of the program is not already running.IP
 .IP -4
 Disable IPv6 operation.
+.IP -v
+Increase program verbosity.
 .SH "AUTHOR"
 mtekllc <@PACKAGE_BUGREPORT@>
 
