@@ -3,7 +3,7 @@ Description=Super Simple Multicast DNS server
 
 [Service]
 Type=simple
-ExecStart=ssmdnsd -4
+ExecStart=ssmdnsd -4 -f
 
 [Install]
 WantedBy=multi-user.target

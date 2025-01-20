@@ -1083,7 +1083,7 @@ int main(int argc, char *argv[])
                         break;
                 default:
                 case 'h':
-                        fprintf(stderr, "error: usage: " PACKAGE_NAME " [-r] [-n hostname override] [-i <only_interface>]\n");
+                        fprintf(stderr, "usage: " PACKAGE_NAME " [-n <hostname_override> ] [-i <only_interface>] [-4] [-f] [-v] [-p <pid_file>] [-r]\n");
                         exit(1);
                 }
         }
