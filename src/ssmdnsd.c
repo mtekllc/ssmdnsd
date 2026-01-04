@@ -154,6 +154,18 @@ struct sockaddr_in sin_multicast = {
         .sin_port = 0
 };
 
+// IPv6 multicast address ff02::fb
+static const struct in6_addr mdns_brd_addr6 = {
+        .s6_addr = { 0xff, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xfb }
+};
+
+struct sockaddr_in6 sin6_multicast = {
+        .sin6_family = AF_INET6,
+        .sin6_addr = { .s6_addr = {0} },
+        .sin6_port = 0
+};
+
 /**
  * @brief a verbosity flag controlled path to stdout
  *
@@ -542,7 +554,7 @@ static int request_interfaces()
                 // user request specific interface only check
 
                 if (only_interface
-                        && memcmp(only_interface, ifa->ifa_name, strlen(ifa->ifa_name)+1)) {
+                        && strcmp(only_interface, ifa->ifa_name)) {
                         continue; // not a match for only_interface
                 }
                 struct sockaddr * addr = ifa->ifa_addr;
@@ -591,11 +603,17 @@ static void handle_netlink_recv()
                                                 int pld = RTA_PAYLOAD(rth);
                                                 // record the index.
                                                 if (ifa->ifa_family == AF_INET) {
+                                                        if (pld != (int)sizeof(struct in_addr)) {
+                                                                continue;
+                                                        }
                                                         struct sockaddr_in sai = {0};
                                                         sai.sin_family = AF_INET;
                                                         memcpy(&sai.sin_addr, RTA_DATA(rth), pld);
                                                         multicast_addr_check((struct sockaddr*)&sai);
                                                 } else if (ifa->ifa_family == AF_INET6) {
+                                                        if (pld != (int)sizeof(struct in6_addr)) {
+                                                                continue;
+                                                        }
                                                         int ifindex = ifa->ifa_index;
                                                         struct sockaddr_in6 sai = {0};
                                                         sai.sin6_family = AF_INET6;
@@ -781,14 +799,26 @@ static void respond(int sock, struct sockaddr_in6 *sender, int sender_len, qu_t 
 
         // per spec, we default to sending a multicast response
         int loopbackEnable = 0;
-        if (setsockopt(sock, IPPROTO_IP, IP_MULTICAST_LOOP, &loopbackEnable, sizeof(loopbackEnable)) < 0) {
-                fprintf(stderr, "warning: cannot prevent self-looping of mDNS packets\n");
-                return;
-        }
+        if (sendA) {
+                if (setsockopt(sock, IPPROTO_IP, IP_MULTICAST_LOOP, &loopbackEnable, sizeof(loopbackEnable)) < 0) {
+                        fprintf(stderr, "warning: cannot prevent self-looping of mDNS packets\n");
+                        return;
+                }
 
-        if (sendto(sock, outbuff, obptr - outbuff, MSG_NOSIGNAL,
-                (struct sockaddr*) &sin_multicast, sizeof(sin_multicast)) != obptr - outbuff) {
-                fprintf(stderr, "warning: could not send multicast reply\n");
+                if (sendto(sock, outbuff, obptr - outbuff, MSG_NOSIGNAL,
+                        (struct sockaddr*) &sin_multicast, sizeof(sin_multicast)) != obptr - outbuff) {
+                        fprintf(stderr, "warning: could not send multicast reply\n");
+                }
+        } else if (sendAAAA) {
+                if (setsockopt(sock, IPPROTO_IPV6, IPV6_MULTICAST_LOOP, &loopbackEnable, sizeof(loopbackEnable)) < 0) {
+                        fprintf(stderr, "warning: cannot prevent self-looping of mDNS packets\n");
+                        return;
+                }
+
+                if (sendto(sock, outbuff, obptr - outbuff, MSG_NOSIGNAL,
+                        (struct sockaddr*) &sin6_multicast, sizeof(sin6_multicast)) != obptr - outbuff) {
+                        fprintf(stderr, "warning: could not send multicast reply\n");
+                }
         }
 }
 
@@ -1106,6 +1136,8 @@ int main(int argc, char *argv[])
         write_pid_file(pid_file_path);
 
         sin_multicast.sin_port = htons(MDNS_PORT);
+        sin6_multicast.sin6_port = htons(MDNS_PORT);
+        memcpy(&sin6_multicast.sin6_addr, &mdns_brd_addr6, sizeof(mdns_brd_addr6));
 
         if (!initialize_hostname()) {
                 fprintf(stderr, "error: hostname initialization failed\n");
